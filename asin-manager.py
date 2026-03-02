@@ -11,8 +11,7 @@ st.title("📦 Gestor de Anuncios por ASIN (Product Ads)")
 st.caption("Activa, pausa, crea o sincroniza (Adapt) anuncios de producto en campañas de Sponsored Products.")
 
 # =====================
-# ESQUEMA CENTRALIZADO DE COLUMNAS (versión robusta)
-# Basado en variantes reales de Amazon EU/US
+# ESQUEMA CENTRALIZADO DE COLUMNAS (ampliado con variantes comunes)
 # =====================
 COLUMN_SCHEMA = {
     "entity": [
@@ -24,25 +23,30 @@ COLUMN_SCHEMA = {
         "campaign name (informational only)",
         "campaign name (read only)",
         "nombre de la campaña",
-        "nombre de la campaña (solo informativo)"
+        "nombre de la campaña (solo informativo)",
+        "nombre de campaña",          # variante sin "la"
+        "campaign name"                # duplicado pero explícito
     ],
     "campaign_id": [
         "campaign id",
         "campaign id (informational only)",
         "campaign id (read only)",
-        "id de la campaña"
+        "id de la campaña",
+        "id de campaña"                # variante sin "la"
     ],
     "ad_group_name": [
         "ad group name",
         "ad group name (informational only)",
         "nombre del grupo de anuncios",
-        "nombre del grupo de anuncios (solo informativo)"
+        "nombre del grupo de anuncios (solo informativo)",
+        "nombre de grupo de anuncios"   # variante
     ],
     "ad_group_id": [
         "ad group id",
         "ad group id (informational only)",
         "adgroup id",
-        "id del grupo de anuncios"
+        "id del grupo de anuncios",
+        "id de grupo de anuncios"       # variante
     ],
     "ad_id": [
         "ad id",
@@ -63,17 +67,15 @@ COLUMN_SCHEMA = {
 }
 
 # =====================
-# Funciones de normalización (inspiradas en BidForest Lite)
+# Funciones de normalización
 # =====================
 def strip_accents(s: str) -> str:
-    """Elimina acentos y diacríticos."""
     return "".join(
         ch for ch in unicodedata.normalize("NFKD", str(s))
         if not unicodedata.combining(ch)
     )
 
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Limpieza general del DataFrame (BOM, NBSP, espacios múltiples)."""
     df = df.copy()
 
     def _clean(x):
@@ -91,9 +93,6 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalizar_estado(estado: str) -> str:
-    """
-    Convierte cualquier variante de estado a valor canónico: 'enabled', 'paused', 'archived' o 'unknown'.
-    """
     if not isinstance(estado, str):
         return "unknown"
     estado = strip_accents(estado).lower().strip()
@@ -105,13 +104,9 @@ def normalizar_estado(estado: str) -> str:
         return "archived"
     return "unknown"
 
-# =====================
-# Mapeo de columnas basado en esquema (reemplaza a find_col)
-# =====================
 def build_column_map(df: pd.DataFrame) -> dict:
     """
-    Construye un diccionario que mapea claves canónicas (COLUMN_SCHEMA) a los nombres reales de columna.
-    La normalización incluye: lower case, sin acentos, sin BOM/NBSP, espacios simples.
+    Construye un diccionario que mapea claves canónicas a nombres reales de columna.
     """
     def norm(x):
         x = strip_accents(str(x)).lower()
@@ -119,7 +114,6 @@ def build_column_map(df: pd.DataFrame) -> dict:
         x = re.sub(r"\s+", " ", x).strip()
         return x
 
-    # Diccionario {nombre_normalizado: nombre_original}
     normalized_cols = {norm(c): c for c in df.columns}
     column_map = {}
 
@@ -129,19 +123,14 @@ def build_column_map(df: pd.DataFrame) -> dict:
             if opt_norm in normalized_cols:
                 column_map[key] = normalized_cols[opt_norm]
                 break
-        # Si no se encuentra, no se añade entrada; luego se validan las obligatorias
     return column_map
 
 def find_sheet_by_name(xls: pd.ExcelFile, keywords: List[str]) -> Optional[str]:
-    """Busca una hoja que contenga alguna de las palabras clave en su nombre."""
     for sheet in xls.sheet_names:
         if any(kw.lower() in sheet.lower() for kw in keywords):
             return sheet
     return None
 
-# =====================
-# Lógica principal (sin cambios en la estructura de negocio)
-# =====================
 def procesar_bulk(
     df: pd.DataFrame,
     lista_asins: List[str],
@@ -153,8 +142,10 @@ def procesar_bulk(
     """
     Genera DataFrame con operaciones en bloque.
     """
-    # 1. Obtener mapeo de columnas
+    # 1. Obtener mapeo de columnas y mostrar (debug)
     column_map = build_column_map(df)
+    st.write("**Mapa de columnas detectado:**", column_map)
+
     col_entidad = column_map.get("entity")
     col_campania = column_map.get("campaign_name")
     col_campaign_id = column_map.get("campaign_id")
@@ -171,7 +162,7 @@ def procesar_bulk(
         st.error(f"Faltan columnas esenciales en el archivo: {missing}")
         return pd.DataFrame()
 
-    # 2. Filtrar por entidad "Anuncio de producto" / "Product Ad" (robusto)
+    # 2. Filtrar por entidad "Product Ad"
     mask_entidad = df[col_entidad].astype(str).str.lower().str.contains(
         r"product\s*ad|anuncio\s*de\s*producto",
         na=False,
@@ -182,11 +173,17 @@ def procesar_bulk(
         st.error("No se encontraron filas de 'Anuncio de producto' o 'Product Ad'.")
         return pd.DataFrame()
 
-    # 3. Filtrar por campaña (usando re.escape para evitar regex no deseada)
+    # Mostrar primeras campañas para depuración
+    st.write("**Primeros 20 valores de campaña (después de filtro de entidad):**")
+    st.write(df_ads[col_campania].dropna().astype(str).unique()[:20])
+
+    # 3. Filtrar por campaña
     try:
         pattern = re.escape(filtro_campania)
     except:
         pattern = filtro_campania
+    st.write(f"**Patrón de búsqueda:** '{pattern}' (escapado)")
+
     mask_campania = df_ads[col_campania].astype(str).str.contains(
         pattern, case=False, na=False, regex=True
     )
@@ -194,12 +191,11 @@ def procesar_bulk(
 
     if df_filtrado.empty:
         st.error(f"No se encontraron anuncios en campañas que contengan '{filtro_campania}'.")
-        # Mostrar algunas campañas para depuración
         st.info("Campañas disponibles en el archivo (primeras 20):")
         st.write(df_ads[col_campania].dropna().astype(str).unique()[:20])
         return pd.DataFrame()
 
-    # 4. Filtrar por grupo si se indica (opcional)
+    # 4. Filtrar por grupo si se indica
     if filtro_grupo and col_grupo_nombre:
         mask_grupo = df_filtrado[col_grupo_nombre].astype(str).str.contains(
             re.escape(filtro_grupo), case=False, na=False, regex=True
@@ -209,7 +205,7 @@ def procesar_bulk(
             st.error(f"No se encontraron anuncios en grupos que contengan '{filtro_grupo}'.")
             return pd.DataFrame()
 
-    # 5. Vista previa de la selección (maneja ausencia de columna de grupo)
+    # 5. Vista previa de la selección
     st.subheader("🔍 Vista previa de la selección")
     if col_grupo_nombre:
         resumen = df_filtrado.groupby([col_campania, col_grupo_nombre]).size().reset_index(name='Nº anuncios')
@@ -217,9 +213,8 @@ def procesar_bulk(
         resumen = df_filtrado.groupby([col_campania]).size().reset_index(name='Nº anuncios')
     st.dataframe(resumen, use_container_width=True)
 
-    # 6. Conteo de ASIN activos por grupo (si existe columna de estado)
+    # 6. Conteo de ASIN activos por grupo
     if col_estado:
-        # Normalizar estado para identificar activos
         estados_activos = ['enabled', 'activada', 'activo']
         mask_activo = df_filtrado[col_estado].astype(str).str.lower().str.strip().isin(estados_activos)
         activos = df_filtrado[mask_activo].copy()
@@ -246,7 +241,7 @@ def procesar_bulk(
                 asins_existentes[asin] = []
             asins_existentes[asin].append(info)
 
-    # 8. Grupos destino para creates (todos los grupos únicos del filtro)
+    # 8. Grupos destino para creates
     grupos_destino = set()
     if modo in ['create', 'update+create', 'adapt']:
         for _, row in df_filtrado.iterrows():
@@ -258,14 +253,13 @@ def procesar_bulk(
             st.error("No hay grupos de anuncios para crear los nuevos ASIN.")
             return pd.DataFrame()
 
-    # 9. Generar filas de salida según el modo (sin cambios en la lógica de negocio)
+    # 9. Generar filas de salida (sin cambios)
     filas = []
 
     if modo == 'adapt':
         asins_lista = set(lista_asins)
         asins_filtro = set(asins_existentes.keys())
 
-        # 9a. Actualizar los que están en la lista pero están pausados (en todas sus ocurrencias)
         for asin in asins_lista.intersection(asins_filtro):
             for info in asins_existentes[asin]:
                 if info['estado_actual'] == 'paused':
@@ -281,7 +275,6 @@ def procesar_bulk(
                         'ASIN': asin
                     })
 
-        # 9b. Crear los que están en la lista pero no existen (en todos los grupos destino)
         for asin in asins_lista - asins_filtro:
             for camp_id, group_id in grupos_destino:
                 filas.append({
@@ -296,7 +289,6 @@ def procesar_bulk(
                     'ASIN': asin
                 })
 
-        # 9c. Pausar los que existen en el filtro pero no están en la lista (en todas sus ocurrencias)
         for asin in asins_filtro - asins_lista:
             for info in asins_existentes[asin]:
                 if info['estado_actual'] == 'enabled':
@@ -312,8 +304,7 @@ def procesar_bulk(
                         'ASIN': asin
                     })
 
-    else:  # modos originales: update, create, update+create
-        # Updates (afectan a todas las ocurrencias del ASIN en el filtro)
+    else:
         if modo in ['update', 'update+create']:
             for asin, lista_info in asins_existentes.items():
                 if asin in lista_asins:
@@ -330,7 +321,6 @@ def procesar_bulk(
                             'ASIN': asin
                         })
 
-        # Creates
         if modo in ['create', 'update+create']:
             asins_a_crear = set(lista_asins) - set(asins_existentes.keys())
             for asin in asins_a_crear:
@@ -357,7 +347,7 @@ def procesar_bulk(
     return df_salida
 
 # =====================
-# Interfaz de usuario (sin cambios funcionales)
+# Interfaz de usuario
 # =====================
 uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", type=["xlsx"])
 
