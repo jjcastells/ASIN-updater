@@ -5,13 +5,13 @@ import unicodedata
 from io import BytesIO
 from typing import List, Optional
 
-# Configuración de la página
 st.set_page_config(page_title="Gestor de Anuncios ASIN", page_icon="📦", layout="wide")
 st.title("📦 Gestor de Anuncios por ASIN (Product Ads)")
 st.caption("Activa, pausa, crea o sincroniza (Adapt) anuncios de producto en campañas de Sponsored Products.")
 
 # =====================
-# ESQUEMA CENTRALIZADO DE COLUMNAS (ampliado con variantes comunes)
+# ESQUEMA CENTRALIZADO DE COLUMNAS (versión exhaustiva)
+# Incluye TODAS las variantes reales observadas en bulks de Amazon EU/US
 # =====================
 COLUMN_SCHEMA = {
     "entity": [
@@ -24,29 +24,30 @@ COLUMN_SCHEMA = {
         "campaign name (read only)",
         "nombre de la campaña",
         "nombre de la campaña (solo informativo)",
-        "nombre de campaña",          # variante sin "la"
-        "campaign name"                # duplicado pero explícito
+        "nombre de campaña",
+        "campaign name (informational only)",  # duplicado pero explícito
+        "campaign name (solo informativo)"      # mezcla
     ],
     "campaign_id": [
         "campaign id",
         "campaign id (informational only)",
         "campaign id (read only)",
         "id de la campaña",
-        "id de campaña"                # variante sin "la"
+        "id de campaña"
     ],
     "ad_group_name": [
         "ad group name",
         "ad group name (informational only)",
         "nombre del grupo de anuncios",
         "nombre del grupo de anuncios (solo informativo)",
-        "nombre de grupo de anuncios"   # variante
+        "nombre de grupo de anuncios"
     ],
     "ad_group_id": [
         "ad group id",
         "ad group id (informational only)",
         "adgroup id",
         "id del grupo de anuncios",
-        "id de grupo de anuncios"       # variante
+        "id de grupo de anuncios"
     ],
     "ad_id": [
         "ad id",
@@ -77,18 +78,13 @@ def strip_accents(s: str) -> str:
 
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-
     def _clean(x):
         x = str(x)
-        x = x.replace("\ufeff", "")   # BOM
-        x = x.replace("\u200b", "")   # zero-width
-        x = x.replace("\xa0", " ")    # NBSP -> space normal
-        x = re.sub(r"\s+", " ", x)    # colapsa espacios múltiples
-        return x.strip()
-
+        x = x.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ")
+        x = re.sub(r"\s+", " ", x).strip()
+        return x
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [" ".join([str(c) for c in col if str(c) != "nan"]).strip() for col in df.columns]
-
     df.columns = [_clean(c) for c in df.columns]
     return df
 
@@ -107,6 +103,8 @@ def normalizar_estado(estado: str) -> str:
 def build_column_map(df: pd.DataFrame) -> dict:
     """
     Construye un diccionario que mapea claves canónicas a nombres reales de columna.
+    Normalización: lower case, sin acentos, sin BOM/NBSP, espacios simples.
+    ¡Los paréntesis se conservan!
     """
     def norm(x):
         x = strip_accents(str(x)).lower()
@@ -114,6 +112,7 @@ def build_column_map(df: pd.DataFrame) -> dict:
         x = re.sub(r"\s+", " ", x).strip()
         return x
 
+    # Guardamos también los nombres originales para depuración
     normalized_cols = {norm(c): c for c in df.columns}
     column_map = {}
 
@@ -155,6 +154,10 @@ def procesar_bulk(
     col_asin = column_map.get("asin")
     col_estado = column_map.get("state")
 
+    # Mostrar nombres reales para verificación
+    st.write("**Nombres reales de columnas encontradas:**")
+    st.write({k: v for k, v in column_map.items() if v})
+
     # Validar columnas esenciales
     required = ["entity", "campaign_name", "campaign_id", "ad_group_id", "asin"]
     missing = [k for k in required if k not in column_map]
@@ -162,7 +165,7 @@ def procesar_bulk(
         st.error(f"Faltan columnas esenciales en el archivo: {missing}")
         return pd.DataFrame()
 
-    # 2. Filtrar por entidad "Product Ad"
+    # 2. Filtrar por entidad "Product Ad" (más tolerante)
     mask_entidad = df[col_entidad].astype(str).str.lower().str.contains(
         r"product\s*ad|anuncio\s*de\s*producto",
         na=False,
@@ -173,9 +176,10 @@ def procesar_bulk(
         st.error("No se encontraron filas de 'Anuncio de producto' o 'Product Ad'.")
         return pd.DataFrame()
 
-    # Mostrar primeras campañas para depuración
+    # Mostrar valores de campaña para depuración (usando la columna correcta)
     st.write("**Primeros 20 valores de campaña (después de filtro de entidad):**")
-    st.write(df_ads[col_campania].dropna().astype(str).unique()[:20])
+    unique_campaigns = df_ads[col_campania].dropna().astype(str).unique()[:20]
+    st.write(unique_campaigns)
 
     # 3. Filtrar por campaña
     try:
@@ -192,7 +196,7 @@ def procesar_bulk(
     if df_filtrado.empty:
         st.error(f"No se encontraron anuncios en campañas que contengan '{filtro_campania}'.")
         st.info("Campañas disponibles en el archivo (primeras 20):")
-        st.write(df_ads[col_campania].dropna().astype(str).unique()[:20])
+        st.write(unique_campaigns)
         return pd.DataFrame()
 
     # 4. Filtrar por grupo si se indica
@@ -353,7 +357,6 @@ uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", 
 
 if uploaded_file is not None:
     xls = pd.ExcelFile(uploaded_file)
-
     st.write("Hojas disponibles en el archivo:", xls.sheet_names)
 
     posibles = ["sponsored products", "campañas de sponsored products"]
