@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.log
+
+# Entornos virtuales
+.venv/
+env/
+venv/
+
+# Archivos de usuario
+.DS_Store
+*.xlsx
+*.zip
+
+# Configuración de VS Code
+.vscode/
+
+# Streamlit
+.streamlit/secrets.toml
