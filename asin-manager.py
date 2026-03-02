@@ -44,26 +44,69 @@ def parse_asins(texto):
 # =============================
 
 COLUMN_SCHEMA = {
-    "entity": ["entity", "entidad"],
-    "campaign_name": ["campaign name", "nombre de la campaña"],
-    "campaign_id": ["campaign id", "id de la campaña"],
-    "ad_group_name": ["ad group name", "nombre del grupo de anuncios"],
-    "ad_group_id": ["ad group id", "id del grupo de anuncios"],
-    "asin": ["asin", "asin (solo informativo)"],
-    "ad_id": ["ad id", "id del anuncio"],
-    "state": ["state", "estado"]
+    "entity": [
+        "entity",
+        "entidad"
+    ],
+    "campaign_name": [
+        "campaign name",
+        "campaign name (informational only)",
+        "campaign name (read only)",
+        "nombre de la campaña",
+        "nombre de la campaña (solo informativo)"
+    ],
+    "campaign_id": [
+        "campaign id",
+        "campaign id (informational only)",
+        "campaign id (read only)",
+        "id de la campaña"
+    ],
+    "ad_group_name": [
+        "ad group name",
+        "ad group name (informational only)",
+        "nombre del grupo de anuncios",
+        "nombre del grupo de anuncios (solo informativo)"
+    ],
+    "ad_group_id": [
+        "ad group id",
+        "ad group id (informational only)",
+        "adgroup id",
+        "id del grupo de anuncios"
+    ],
+    "asin": [
+        "asin",
+        "asin (informational only)",
+        "asin (solo informativo)"
+    ],
+    "ad_id": [
+        "ad id",
+        "ad id (informational only)",
+        "id del anuncio"
+    ],
+    "state": [
+        "state",
+        "ad status",
+        "status",
+        "estado"
+    ]
 }
 
 def build_column_map(df):
     def norm(x):
         return strip_accents(clean_text(x)).lower()
+
     normalized = {norm(c): c for c in df.columns}
     col_map = {}
+
     for key, options in COLUMN_SCHEMA.items():
-        for opt in options:
-            if norm(opt) in normalized:
-                col_map[key] = normalized[norm(opt)]
+        for col_norm, original in normalized.items():
+            for opt in options:
+                if norm(opt) == col_norm:
+                    col_map[key] = original
+                    break
+            if key in col_map:
                 break
+
     return col_map
 
 # =============================
@@ -82,9 +125,13 @@ if uploaded_file:
     column_map = build_column_map(df)
 
     required = ["entity","campaign_name","campaign_id","ad_group_name","ad_group_id","asin"]
-    if not all(k in column_map for k in required):
-        st.error("Faltan columnas esenciales.")
-        st.stop()
+        missing = [k for k in required if k not in column_map]
+
+        if missing:
+            st.error(f"Faltan columnas esenciales: {missing}")
+            st.write("Columnas detectadas:", df.columns.tolist())
+            st.write("Column map generado:", column_map)
+            st.stop()
 
     col_entity = column_map["entity"]
     col_campaign = column_map["campaign_name"]
