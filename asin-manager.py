@@ -10,7 +10,7 @@ st.title("📦 Gestor de Anuncios por ASIN (Product Ads)")
 st.caption("Activa, pausa, crea o sincroniza (Adapt) anuncios de producto en campañas de Sponsored Products.")
 
 # =====================
-# ESQUEMA CENTRALIZADO DE COLUMNAS
+# ESQUEMA CENTRALIZADO
 # =====================
 COLUMN_SCHEMA = {
     "entity": ["entity", "entidad"],
@@ -20,8 +20,7 @@ COLUMN_SCHEMA = {
         "campaign name (read only)",
         "nombre de la campaña",
         "nombre de la campaña (solo informativo)",
-        "nombre de campaña",
-        "campaign name (solo informativo)"
+        "nombre de campaña"
     ],
     "campaign_id": [
         "campaign id",
@@ -44,39 +43,26 @@ COLUMN_SCHEMA = {
         "id del grupo de anuncios",
         "id de grupo de anuncios"
     ],
-    "ad_id": [
-        "ad id",
-        "ad id (informational only)",
-        "id del anuncio"
-    ],
-    "asin": [
-        "asin",
-        "asin (informational only)",
-        "asin (solo informativo)"
-    ],
-    "state": [
-        "state",
-        "status",
-        "ad status",
-        "estado"
-    ]
+    "ad_id": ["ad id", "ad id (informational only)", "id del anuncio"],
+    "asin": ["asin", "asin (informational only)", "asin (solo informativo)"],
+    "state": ["state", "status", "ad status", "estado"]
 }
 
 # =====================
-# NORMALIZACIÓN
+# Normalización
 # =====================
-
 def strip_accents(s: str) -> str:
     return "".join(
         ch for ch in unicodedata.normalize("NFKD", str(s))
         if not unicodedata.combining(ch)
     )
 
-def clean_text(x):
-    x = str(x)
-    x = x.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ")
-    x = re.sub(r"\s+", " ", x).strip()
-    return x
+def clean_text(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    s = s.replace("\ufeff", "").replace("\u200b", "").replace("\xa0", " ")
+    s = re.sub(r"\s+", " ", s)
+    return strip_accents(s).lower().strip()
 
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -86,9 +72,7 @@ def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def normalizar_estado(estado: str) -> str:
-    if not isinstance(estado, str):
-        return "unknown"
-    estado = strip_accents(estado).lower().strip()
+    estado = clean_text(estado)
     if "enable" in estado or "activ" in estado:
         return "enabled"
     if "paus" in estado:
@@ -98,45 +82,20 @@ def normalizar_estado(estado: str) -> str:
     return "unknown"
 
 def build_column_map(df: pd.DataFrame) -> dict:
-    def norm(x):
-        return strip_accents(clean_text(x)).lower()
-
-    normalized_cols = {norm(c): c for c in df.columns}
+    normalized_cols = {clean_text(c): c for c in df.columns}
     column_map = {}
 
     for key, options in COLUMN_SCHEMA.items():
         for opt in options:
-            opt_norm = norm(opt)
-            if opt_norm in normalized_cols:
-                column_map[key] = normalized_cols[opt_norm]
+            if clean_text(opt) in normalized_cols:
+                column_map[key] = normalized_cols[clean_text(opt)]
                 break
 
     return column_map
 
-def find_sheet_by_name(xls: pd.ExcelFile, keywords: List[str]) -> Optional[str]:
-    for sheet in xls.sheet_names:
-        if any(kw.lower() in sheet.lower() for kw in keywords):
-            return sheet
-    return None
-
 # =====================
-# FILTRO ROBUSTO ENTITY
+# FUNCIÓN PRINCIPAL
 # =====================
-
-def es_product_ad(valor):
-    if not isinstance(valor, str):
-        return False
-    v = strip_accents(clean_text(valor)).lower()
-    return (
-        "product ad" in v
-        or "productad" in v
-        or "anuncio de producto" in v
-    )
-
-# =====================
-# PROCESAMIENTO PRINCIPAL
-# =====================
-
 def procesar_bulk(
     df: pd.DataFrame,
     lista_asins: List[str],
@@ -151,6 +110,7 @@ def procesar_bulk(
 
     required = ["entity", "campaign_name", "campaign_id", "ad_group_id", "asin"]
     missing = [k for k in required if k not in column_map]
+
     if missing:
         st.error(f"Faltan columnas esenciales: {missing}")
         return pd.DataFrame()
@@ -164,56 +124,80 @@ def procesar_bulk(
     col_asin = column_map["asin"]
     col_estado = column_map.get("state")
 
-    # Limpieza preventiva
-    for col in [col_entidad, col_campania, col_asin]:
-        df[col] = df[col].apply(clean_text)
+    st.write("Filas iniciales:", len(df))
 
-    # 1️⃣ Filtrar Product Ads
-    mask_entidad = df[col_entidad].apply(es_product_ad)
-    df_ads = df[mask_entidad].copy()
+    # =====================
+    # FILTRO ENTIDAD ROBUSTO
+    # =====================
+    def es_product_ad(valor):
+        v = clean_text(valor)
+        return (
+            "product ad" in v or
+            "productad" in v or
+            "anuncio de producto" in v
+        )
+
+    df_ads = df[df[col_entidad].apply(es_product_ad)].copy()
 
     st.write("Filas tras filtro entidad:", len(df_ads))
 
     if df_ads.empty:
-        st.error("No se encontraron filas Product Ad.")
-        st.write("Valores únicos de entidad:", df[col_entidad].unique()[:20])
+        st.error("No se encontraron filas tipo Product Ad.")
+        st.write("Valores únicos en columna entidad:")
+        st.write(df[col_entidad].unique()[:20])
         return pd.DataFrame()
 
-    st.write("Primeras campañas detectadas:", df_ads[col_campania].unique()[:20])
+    st.write("Primeros 20 nombres campaña:")
+    st.write(df_ads[col_campania].dropna().astype(str).unique()[:20])
 
-    # 2️⃣ Filtrar campaña
-    pattern = re.escape(filtro_campania.strip())
-    mask_campania = df_ads[col_campania].str.contains(pattern, case=False, na=False)
-    df_filtrado = df_ads[mask_campania].copy()
+    # =====================
+    # FILTRO CAMPAÑA
+    # =====================
+    pattern = re.escape(filtro_campania.strip().lower())
+
+    df_ads["_camp_norm"] = df_ads[col_campania].astype(str).apply(clean_text)
+
+    df_filtrado = df_ads[
+        df_ads["_camp_norm"].str.contains(pattern, na=False)
+    ].copy()
 
     st.write("Filas tras filtro campaña:", len(df_filtrado))
 
     if df_filtrado.empty:
-        st.error(f"No se encontraron campañas con '{filtro_campania}'")
-        st.write("Campañas disponibles:", df_ads[col_campania].unique()[:20])
+        st.error(f"No se encontraron campañas con '{filtro_campania}'.")
         return pd.DataFrame()
 
-    # 3️⃣ Filtro grupo
+    # =====================
+    # FILTRO GRUPO
+    # =====================
     if filtro_grupo and col_grupo_nombre:
-        pattern_grupo = re.escape(filtro_grupo.strip())
+        pattern_grupo = re.escape(filtro_grupo.strip().lower())
+        df_filtrado["_grupo_norm"] = df_filtrado[col_grupo_nombre].astype(str).apply(clean_text)
+
         df_filtrado = df_filtrado[
-            df_filtrado[col_grupo_nombre].str.contains(pattern_grupo, case=False, na=False)
-        ]
+            df_filtrado["_grupo_norm"].str.contains(pattern_grupo, na=False)
+        ].copy()
 
-    if df_filtrado.empty:
-        st.error("No quedaron anuncios tras filtro de grupo.")
-        return pd.DataFrame()
+        st.write("Filas tras filtro grupo:", len(df_filtrado))
 
-    # 4️⃣ Vista previa
-    if col_grupo_nombre:
-        resumen = df_filtrado.groupby([col_campania, col_grupo_nombre]).size().reset_index(name='Nº anuncios')
-    else:
-        resumen = df_filtrado.groupby([col_campania]).size().reset_index(name='Nº anuncios')
+        if df_filtrado.empty:
+            st.error("No se encontraron grupos con ese texto.")
+            return pd.DataFrame()
 
+    # =====================
+    # RESUMEN
+    # =====================
     st.subheader("🔍 Vista previa selección")
+    if col_grupo_nombre:
+        resumen = df_filtrado.groupby([col_campania, col_grupo_nombre]).size().reset_index(name="Nº anuncios")
+    else:
+        resumen = df_filtrado.groupby([col_campania]).size().reset_index(name="Nº anuncios")
+
     st.dataframe(resumen, use_container_width=True)
 
-    # 5️⃣ Mapear ASIN existentes
+    # =====================
+    # MAPEAR EXISTENTES
+    # =====================
     asins_existentes = {}
 
     for _, row in df_filtrado.iterrows():
@@ -222,25 +206,31 @@ def procesar_bulk(
             continue
 
         info = {
+            "ad_id": str(row.get(col_ad_id, "")).strip() if col_ad_id else "",
             "campaign_id": str(row[col_campaign_id]).strip(),
             "ad_group_id": str(row[col_adgroup_id]).strip(),
-            "ad_id": str(row[col_ad_id]).strip() if col_ad_id else "",
-            "estado_actual": normalizar_estado(row[col_estado]) if col_estado else "unknown"
+            "estado_actual": normalizar_estado(row.get(col_estado, "")) if col_estado else "unknown"
         }
 
         asins_existentes.setdefault(asin, []).append(info)
 
-    grupos_destino = {
-        (str(r[col_campaign_id]).strip(), str(r[col_adgroup_id]).strip())
-        for _, r in df_filtrado.iterrows()
-    }
+    grupos_destino = set(
+        (str(row[col_campaign_id]).strip(), str(row[col_adgroup_id]).strip())
+        for _, row in df_filtrado.iterrows()
+    )
 
     filas = []
 
-    if modo == "update":
-        for asin in lista_asins:
-            if asin in asins_existentes:
-                for info in asins_existentes[asin]:
+    # =====================
+    # LÓGICA OPERATIVA
+    # =====================
+    if modo == "adapt":
+        asins_lista = set(lista_asins)
+        asins_filtro = set(asins_existentes.keys())
+
+        for asin in asins_lista & asins_filtro:
+            for info in asins_existentes[asin]:
+                if info["estado_actual"] == "paused":
                     filas.append({
                         "Product": "Sponsored Products",
                         "Entity": "Product Ad",
@@ -248,6 +238,67 @@ def procesar_bulk(
                         "Campaign ID": info["campaign_id"],
                         "Ad Group ID": info["ad_group_id"],
                         "Ad ID": info["ad_id"],
+                        "State": "enabled",
+                        "SKU": "",
+                        "ASIN": asin
+                    })
+
+        for asin in asins_lista - asins_filtro:
+            for camp_id, group_id in grupos_destino:
+                filas.append({
+                    "Product": "Sponsored Products",
+                    "Entity": "Product Ad",
+                    "Operation": "create",
+                    "Campaign ID": camp_id,
+                    "Ad Group ID": group_id,
+                    "Ad ID": "",
+                    "State": "enabled",
+                    "SKU": "",
+                    "ASIN": asin
+                })
+
+        for asin in asins_filtro - asins_lista:
+            for info in asins_existentes[asin]:
+                if info["estado_actual"] == "enabled":
+                    filas.append({
+                        "Product": "Sponsored Products",
+                        "Entity": "Product Ad",
+                        "Operation": "update",
+                        "Campaign ID": info["campaign_id"],
+                        "Ad Group ID": info["ad_group_id"],
+                        "Ad ID": info["ad_id"],
+                        "State": "paused",
+                        "SKU": "",
+                        "ASIN": asin
+                    })
+
+    else:
+        if modo in ["update", "update+create"]:
+            for asin in lista_asins:
+                if asin in asins_existentes:
+                    for info in asins_existentes[asin]:
+                        filas.append({
+                            "Product": "Sponsored Products",
+                            "Entity": "Product Ad",
+                            "Operation": "update",
+                            "Campaign ID": info["campaign_id"],
+                            "Ad Group ID": info["ad_group_id"],
+                            "Ad ID": info["ad_id"],
+                            "State": accion,
+                            "SKU": "",
+                            "ASIN": asin
+                        })
+
+        if modo in ["create", "update+create"]:
+            for asin in set(lista_asins) - set(asins_existentes.keys()):
+                for camp_id, group_id in grupos_destino:
+                    filas.append({
+                        "Product": "Sponsored Products",
+                        "Entity": "Product Ad",
+                        "Operation": "create",
+                        "Campaign ID": camp_id,
+                        "Ad Group ID": group_id,
+                        "Ad ID": "",
                         "State": accion,
                         "SKU": "",
                         "ASIN": asin
@@ -258,39 +309,5 @@ def procesar_bulk(
         return pd.DataFrame()
 
     df_salida = pd.DataFrame(filas)
-    return df_salida[
-        ["Product","Entity","Operation","Campaign ID","Ad Group ID","Ad ID","State","SKU","ASIN"]
-    ]
-
-# =====================
-# INTERFAZ
-# =====================
-
-uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", type=["xlsx"])
-
-if uploaded_file:
-    xls = pd.ExcelFile(uploaded_file)
-    hoja = find_sheet_by_name(xls, ["sponsored products"]) or xls.sheet_names[0]
-    df = pd.read_excel(xls, sheet_name=hoja, dtype=str)
-    df = clean_columns(df)
-
-    st.dataframe(df.head(20))
-
-    filtro_campania = st.text_input("🔎 Texto para filtrar campañas (obligatorio)")
-    modo = st.selectbox("Modo", ["update"])
-    accion = st.radio("Acción", ["enabled","paused"])
-    asins_text = st.text_area("ASIN (uno por línea)")
-
-    if st.button("Generar"):
-        lista_asins = [a.strip().upper() for a in asins_text.splitlines() if a.strip()]
-
-        df_resultado = procesar_bulk(
-            df,
-            lista_asins,
-            filtro_campania,
-            modo,
-            accion
-        )
-
-        if not df_resultado.empty:
-            st.dataframe(df_resultado)
+    columnas = ["Product", "Entity", "Operation", "Campaign ID", "Ad Group ID", "Ad ID", "State", "SKU", "ASIN"]
+    return df_salida[columnas]
