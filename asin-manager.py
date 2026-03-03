@@ -8,8 +8,14 @@ st.title("📦 Gestor de ASINs en Campañas")
 st.caption("Filtra campañas y grupos, luego introduce lista de ASINs para activar/pausar/añadir. CSV final listo para descargar.")
 
 # =====================
-# Función para generar operaciones
+# Helpers
 # =====================
+def normalize_id(s):
+    s = str(s).strip()
+    s = re.sub(r"\.0$", "", s)  # elimina .0
+    s = re.sub(r"[^\d]", "", s)  # solo dígitos
+    return s
+
 def procesar_asins(df_filtrado, lista_asins, accion):
     filas = []
     for asin in lista_asins:
@@ -17,13 +23,13 @@ def procesar_asins(df_filtrado, lista_asins, accion):
         for _, row in df_filtrado.iterrows():
             filas.append({
                 'Operación': accion,
-                'ID de la campaña': row['ID de la campaña'],
-                'ID del grupo de anuncios': row['ID del grupo de anuncios'],
-                'ID del anuncio': row['ID del anuncio'],
-                'SKU': row['SKU'],
+                'ID de la campaña': normalize_id(row['ID de la campaña']),
+                'ID del grupo de anuncios': normalize_id(row['ID del grupo de anuncios']),
+                'ID del anuncio': normalize_id(row.get('ID del anuncio', '')),
+                'SKU': row.get('SKU', ''),
                 'ASIN (Solo informativo)': asin,
-                'Nombre de la campaña (Solo informativo)': row['Nombre de la campaña (Solo informativo)'],
-                'Nombre del grupo de anuncios (Solo informativo)': row['Nombre del grupo de anuncios (Solo informativo)']
+                'Nombre de la campaña (Solo informativo)': row.get('Nombre de la campaña (Solo informativo)', ''),
+                'Nombre del grupo de anuncios (Solo informativo)': row.get('Nombre del grupo de anuncios (Solo informativo)', '')
             })
     return pd.DataFrame(filas)
 
@@ -33,13 +39,11 @@ def procesar_asins(df_filtrado, lista_asins, accion):
 uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", type=["xlsx"])
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
-    
     hojas = xls.sheet_names
     indice_default = 1 if len(hojas) > 1 else 0
     hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_default)
     
     df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
-    
     st.subheader("🔍 Vista previa del archivo (primeras 10 filas)")
     st.dataframe(df.head(10), use_container_width=True)
 
@@ -52,9 +56,6 @@ if uploaded_file:
     with col2:
         filtro_grupo = st.text_input("📁 Filtrar grupos (opcional)", placeholder="Ej: EXACT")
 
-    # =====================
-    # Inicializar session_state
-    # =====================
     if 'df_ads_filtrado' not in st.session_state:
         st.session_state.df_ads_filtrado = pd.DataFrame()
     if 'filtrado_listo' not in st.session_state:
@@ -101,9 +102,9 @@ if uploaded_file:
     )
 
     # =====================
-    # Botón de generar vista previa y CSV
+    # Botón de generar CSV
     # =====================
-    if st.button("✅ Validar ASINs y generar vista previa"):
+    if st.button("✅ Validar ASINs y generar CSV"):
         if not st.session_state.filtrado_listo:
             st.error("Primero debes filtrar campañas y grupos.")
         elif not asins_text.strip():
@@ -118,30 +119,24 @@ if uploaded_file:
             if df_resultado.empty:
                 st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
             else:
-                st.session_state.df_resultado = df_resultado
-                st.session_state.accion = accion
-
-                # --- Vista previa ---
-                st.subheader("📄 Vista previa de acciones a generar")
-                st.dataframe(df_resultado, use_container_width=True)
-
-                # =========================
-                # Generación del CSV para Amazon (Product Ad Bulk Changes)
-                # =========================
-                df_csv = df_resultado.copy()
+                # =====================
+                # Preparar CSV compatible Bulk Changes Amazon
+                # =====================
+                df_csv = pd.DataFrame()
                 df_csv['Product'] = 'Sponsored Products'
                 df_csv['Entity'] = 'Product Ad'
-                df_csv['Operation'] = 'Update/create'  # formato Amazon
-                df_csv['Campaign ID'] = df_csv['ID de la campaña']
-                df_csv['Ad Group ID'] = df_csv['ID del grupo de anuncios']
-                df_csv['Ad ID (Read only)'] = ''  # siempre vacío
-                df_csv['State'] = df_csv['Operación']  # enabled/paused según selección
-                df_csv['ASIN'] = df_csv['ASIN (Solo informativo)']
+                df_csv['Operation'] = 'Update/create'
+                df_csv['Campaign ID'] = df_resultado['ID de la campaña']
+                df_csv['Ad Group ID'] = df_resultado['ID del grupo de anuncios']
+                df_csv['Ad ID (Read only)'] = df_resultado['ID del anuncio']
+                df_csv['State'] = df_resultado['Operación']  # enabled/paused/create+enabled
+                df_csv['ASIN'] = df_resultado['ASIN (Solo informativo)']
 
+                # Orden exacto para Amazon
                 columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID (Read only)', 'State', 'ASIN']
                 df_csv = df_csv[columnas_amazon]
 
-                # Validación básica antes de exportar
+                # Validación básica de vacíos
                 if df_csv[['Campaign ID', 'Ad Group ID', 'State', 'ASIN']].isnull().any().any():
                     st.error("❌ Hay valores vacíos en columnas obligatorias. Revisa IDs y ASINs.")
                 else:
