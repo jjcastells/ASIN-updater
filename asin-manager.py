@@ -121,17 +121,16 @@ if uploaded_file:
                 st.dataframe(df_resultado, use_container_width=True)
 
 # =========================
-# Generación del CSV para Amazon
+# Generación del CSV para Amazon y descarga
 # =========================
-if not df_resultado.empty:
-    st.subheader("📄 Vista previa de acciones a generar")
-    st.dataframe(df_resultado, use_container_width=True)
+if 'df_resultado' in st.session_state and not st.session_state.df_resultado.empty:
+    df_resultado = st.session_state.df_resultado  # tomar del session_state
 
     # --- Solo columnas que Amazon necesita ---
     df_csv = df_resultado.copy()
     df_csv['Product'] = 'Sponsored Products'
     df_csv['Entity'] = 'Product Ad'
-    df_csv['Operation'] = accion
+    df_csv['Operation'] = st.session_state.accion  # guardar la acción seleccionada en session_state al generar
     df_csv['Campaign ID'] = df_csv['ID de la campaña']
     df_csv['Ad Group ID'] = df_csv['ID del grupo de anuncios']
     df_csv['Ad ID'] = df_csv['ID del anuncio']
@@ -139,6 +138,7 @@ if not df_resultado.empty:
     columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID']
     df_csv = df_csv[columnas_amazon]
 
+    # --- Descarga ---
     csv_buffer = BytesIO()
     df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
     csv_buffer.seek(0)
