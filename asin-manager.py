@@ -116,21 +116,15 @@ if st.button("🔎 Filtrar campañas y grupos"):
                 else:
                     st.subheader("📄 Vista previa de campañas y grupos filtrados")
 
-                    # Forzar las columnas en el orden deseado
+                    # ===== Cambio quirúrgico: mapear columnas detectadas a la tabla final =====
                     columnas_deseadas = [
                         "Nombre de la campaña (Solo informativo)",
                         "Nombre del grupo de anuncios (Solo informativo)"
                     ]
-
-                    # Crear DataFrame seguro rellenando columnas ausentes con cadena vacía
                     resumen = pd.DataFrame()
-                    for col in columnas_deseadas:
-                        if col in df_ads.columns:
-                            resumen[col] = df_ads[col]
-                        else:
-                            resumen[col] = ""  # Si no existe la columna, poner vacío
+                    resumen[columnas_deseadas[0]] = df_ads[campaign_col] if campaign_col else ""
+                    resumen[columnas_deseadas[1]] = df_ads[adgroup_col] if adgroup_col else ""
 
-                    # Eliminar duplicados y resetear índice
                     resumen = resumen.drop_duplicates().reset_index(drop=True)
                     st.dataframe(resumen, use_container_width=True)
                     
