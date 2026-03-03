@@ -162,19 +162,21 @@ if uploaded_file:
     col_ad_id = column_map.get("ad_id")
     col_state = column_map.get("state")
 
-    # =============================
-    # FASE 1 — FILTRO ESTRUCTURAL
-    # =============================
+# =============================
+# FASE 1 — FILTRO ESTRUCTURAL
+# =============================
 
 if st.button("🔎 Filtrar estructura"):
 
-    df_ads = df[df[col_entity].apply(es_product_ad)].copy()
+    # Filtrar únicamente los anuncios de producto
+    df_ads = df[df[col_entity] == "anuncio de producto"].copy()
 
     # Mostrar valores de campaña disponibles antes de filtrar
     st.write("**Valores de campaña disponibles (primeros 20):**")
     valores_campana = df_ads[col_campaign].dropna().astype(str).unique()[:20]
     st.write(valores_campana)
 
+    # Filtrado por nombre de campaña si se ha introducido
     if filtro_campania.strip():
         df_ads = df_ads[
             df_ads[col_campaign]
@@ -182,6 +184,7 @@ if st.button("🔎 Filtrar estructura"):
             .str.contains(re.escape(filtro_campania.strip()), case=False, na=False)
         ]
 
+    # Filtrado por grupo si se ha introducido
     if filtro_grupo.strip():
         df_ads = df_ads[
             df_ads[col_group]
@@ -202,7 +205,7 @@ if st.button("🔎 Filtrar estructura"):
 
     st.success("Filtro aplicado correctamente.")
     st.dataframe(estructura, use_container_width=True)
-
+    
     # =============================
     # FASE 2 — VALIDAR FILTRO
     # =============================
