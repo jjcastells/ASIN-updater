@@ -115,10 +115,24 @@ if uploaded_file:
                         st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
                     else:
                         st.subheader("📄 Vista previa de campañas y grupos filtrados")
-                        # Solo columnas existentes
-                        columnas_a_mostrar = [c for c in [campaign_col, adgroup_col] if c]
-                        resumen = df_ads[columnas_a_mostrar].drop_duplicates().reset_index(drop=True)
-                        st.dataframe(resumen, use_container_width=True)
+                        
+                        # Forzar las columnas en el orden deseado
+                        columnas_deseadas = [
+                            "Nombre de la campaña (Solo informativo)",
+                            "Nombre del grupo de anuncios (Solo informativo)"
+                        ]
+                        
+                        # Crear DataFrame seguro rellenando columnas ausentes con cadena vacía
+                        resumen = pd.DataFrame()
+                        for col in columnas_deseadas:
+                            if col in df_ads.columns:
+                                resumen[col] = df_ads[col]
+                            else:
+                                resumen[col] = ""  # Si no existe la columna, poner vacío
+
+# Eliminar duplicados y resetear índice
+resumen = resumen.drop_duplicates().reset_index(drop=True)
+st.dataframe(resumen, use_container_width=True)
                         
                         # =====================
                         # Etapa 2: introducir ASINs y seleccionar acción
