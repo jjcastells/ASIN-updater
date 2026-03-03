@@ -28,7 +28,6 @@ def procesar_asins(df_filtrado: pd.DataFrame, campaign_col: str, adgroup_col: st
     Genera DataFrame con las operaciones según lista de ASINs y acción seleccionada.
     """
     filas = []
-    # Usar solo columnas existentes
     columnas_validas = [c for c in [campaign_col, adgroup_col] if c in df_filtrado.columns]
     if not columnas_validas:
         return pd.DataFrame()  # Si no hay columnas válidas, devolvemos vacío
@@ -44,7 +43,6 @@ def procesar_asins(df_filtrado: pd.DataFrame, campaign_col: str, adgroup_col: st
                 'Operation': accion,
                 'ASIN': asin
             }
-            # Mapear campañas y grupos solo si existen
             if campaign_col in df_filtrado.columns:
                 fila['Campaign Name'] = grupo[0]
             if adgroup_col in df_filtrado.columns:
@@ -114,16 +112,20 @@ if st.button("🔎 Filtrar campañas y grupos"):
                 if df_ads.empty:
                     st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
                 else:
+                    # =====================
+                    # Vista previa de campañas y grupos filtrados
+                    # =====================
                     st.subheader("📄 Vista previa de campañas y grupos filtrados")
 
-                    # ===== Cambio quirúrgico: mapear columnas detectadas a la tabla final =====
                     columnas_deseadas = [
                         "Nombre de la campaña (Solo informativo)",
                         "Nombre del grupo de anuncios (Solo informativo)"
                     ]
+
                     resumen = pd.DataFrame()
-                    resumen[columnas_deseadas[0]] = df_ads[campaign_col] if campaign_col else ""
-                    resumen[columnas_deseadas[1]] = df_ads[adgroup_col] if adgroup_col else ""
+                    # Cambio quirúrgico: usar loc para no perder los datos
+                    resumen[columnas_deseadas[0]] = df_ads.loc[:, campaign_col] if campaign_col else ""
+                    resumen[columnas_deseadas[1]] = df_ads.loc[:, adgroup_col] if adgroup_col else ""
 
                     resumen = resumen.drop_duplicates().reset_index(drop=True)
                     st.dataframe(resumen, use_container_width=True)
@@ -147,7 +149,6 @@ if st.button("✅ Validar ASINs y generar vista previa"):
     if not asins_text.strip():
         st.error("Debes introducir al menos un ASIN.")
     else:
-        # Parseamos ASINs
         lista_asins = re.split(r'[\n, ]+', asins_text.strip())
         lista_asins = [a.upper() for a in lista_asins if a]
 
@@ -159,7 +160,6 @@ if st.button("✅ Validar ASINs y generar vista previa"):
             st.subheader("📄 Vista previa de acciones a generar")
             st.dataframe(df_resultado, use_container_width=True)
 
-            # Botón de descarga CSV
             csv_buffer = BytesIO()
             df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
             csv_buffer.seek(0)
