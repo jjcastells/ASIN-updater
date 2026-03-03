@@ -116,22 +116,19 @@ def build_column_map(df):
 uploaded_file = st.file_uploader("📤 Sube tu bulk de Amazon", type=["xlsx"])
 
 if uploaded_file:
-
     xls = pd.ExcelFile(uploaded_file)
     hoja = xls.sheet_names[0]
     df = pd.read_excel(xls, sheet_name=hoja, dtype=str)
     df.columns = [clean_text(c) for c in df.columns]
 
     column_map = build_column_map(df)
-
-    required = ["entity","campaign_name","campaign_id","ad_group_name","ad_group_id","asin"]
-        missing = [k for k in required if k not in column_map]
-
-        if missing:
-            st.error(f"Faltan columnas esenciales: {missing}")
-            st.write("Columnas detectadas:", df.columns.tolist())
-            st.write("Column map generado:", column_map)
-            st.stop()
+    required = ["entity", "campaign_name", "campaign_id", "ad_group_name", "ad_group_id", "asin"]
+    missing = [k for k in required if k not in column_map]
+    if missing:
+        st.error(f"Faltan columnas esenciales: {missing}")
+        st.write("Columnas detectadas:", df.columns.tolist())
+        st.write("Column map generado:", column_map)
+        st.stop()
 
     col_entity = column_map["entity"]
     col_campaign = column_map["campaign_name"]
