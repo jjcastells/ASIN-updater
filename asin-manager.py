@@ -34,7 +34,6 @@ uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", 
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     
-    # Selector de hoja con valor por defecto en la segunda hoja
     hojas = xls.sheet_names
     indice_default = 1 if len(hojas) > 1 else 0
     hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_default)
@@ -119,7 +118,6 @@ if uploaded_file:
             if df_resultado.empty:
                 st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
             else:
-                # Guardar en session_state para persistencia
                 st.session_state.df_resultado = df_resultado
                 st.session_state.accion = accion
 
@@ -128,43 +126,25 @@ if uploaded_file:
                 st.dataframe(df_resultado, use_container_width=True)
 
                 # =========================
-                # Generación del CSV para Amazon con validación
+                # Generación del CSV para Amazon (Product Ad Bulk Changes)
                 # =========================
                 df_csv = df_resultado.copy()
                 df_csv['Product'] = 'Sponsored Products'
                 df_csv['Entity'] = 'Product Ad'
-                df_csv['Operation'] = accion
+                df_csv['Operation'] = 'Update/create'  # formato Amazon
                 df_csv['Campaign ID'] = df_csv['ID de la campaña']
                 df_csv['Ad Group ID'] = df_csv['ID del grupo de anuncios']
-                df_csv['Ad ID'] = df_csv['ID del anuncio']
+                df_csv['Ad ID (Read only)'] = ''  # siempre vacío
+                df_csv['State'] = df_csv['Operación']  # enabled/paused según selección
+                df_csv['ASIN'] = df_csv['ASIN (Solo informativo)']
 
-                columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID']
+                columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID (Read only)', 'State', 'ASIN']
                 df_csv = df_csv[columnas_amazon]
 
-                # =========================
-                # Función de validación antes de exportar
-                # =========================
-                def validar_para_amazon(df_csv):
-                    # 1️⃣ Verificar que no haya valores vacíos en columnas obligatorias
-                    if df_csv[columnas_amazon].isnull().any().any():
-                        st.error("❌ Error: Hay valores vacíos en columnas obligatorias. Revisa IDs y filas.")
-                        return False
-
-                    # 2️⃣ Verificar que Campaign ID, Ad Group ID y Ad ID sean enteros
-                    for col in ['Campaign ID', 'Ad Group ID', 'Ad ID']:
-                        if not df_csv[col].apply(lambda x: str(x).isdigit()).all():
-                            st.error(f"❌ Error: La columna '{col}' debe contener solo números enteros.")
-                            return False
-
-                    # 3️⃣ Limpiar espacios extra
-                    df_csv[columnas_amazon] = df_csv[columnas_amazon].applymap(lambda x: str(x).strip())
-
-                    return True
-
-                # =========================
-                # Exportar CSV solo si pasa validación
-                # =========================
-                if validar_para_amazon(df_csv):
+                # Validación básica antes de exportar
+                if df_csv[['Campaign ID', 'Ad Group ID', 'State', 'ASIN']].isnull().any().any():
+                    st.error("❌ Hay valores vacíos en columnas obligatorias. Revisa IDs y ASINs.")
+                else:
                     csv_buffer = BytesIO()
                     df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
                     csv_buffer.seek(0)
