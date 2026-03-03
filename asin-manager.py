@@ -32,7 +32,16 @@ def procesar_asins(df_filtrado, lista_asins, accion):
 # =====================
 uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", type=["xlsx"])
 if uploaded_file:
-    df = pd.read_excel(uploaded_file, dtype=str)
+    xls = pd.ExcelFile(uploaded_file)
+    
+    # =====================
+    # Selector de hoja con valor por defecto
+    # =====================
+    hojas = xls.sheet_names
+    indice_default = 1 if len(hojas) > 1 else 0  # segunda hoja si existe, sino primera
+    hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_default)
+    
+    df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
     
     st.subheader("🔍 Vista previa del archivo (primeras 10 filas)")
     st.dataframe(df.head(10), use_container_width=True)
