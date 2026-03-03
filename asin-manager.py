@@ -128,7 +128,7 @@ if uploaded_file:
                 st.dataframe(df_resultado, use_container_width=True)
 
                 # =========================
-                # Generación del CSV para Amazon
+                # Generación del CSV para Amazon con validación
                 # =========================
                 df_csv = df_resultado.copy()
                 df_csv['Product'] = 'Sponsored Products'
@@ -141,13 +141,37 @@ if uploaded_file:
                 columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID']
                 df_csv = df_csv[columnas_amazon]
 
-                csv_buffer = BytesIO()
-                df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
-                csv_buffer.seek(0)
+                # =========================
+                # Función de validación antes de exportar
+                # =========================
+                def validar_para_amazon(df_csv):
+                    # 1️⃣ Verificar que no haya valores vacíos en columnas obligatorias
+                    if df_csv[columnas_amazon].isnull().any().any():
+                        st.error("❌ Error: Hay valores vacíos en columnas obligatorias. Revisa IDs y filas.")
+                        return False
 
-                st.download_button(
-                    label="⬇️ Descargar archivo de operaciones (CSV)",
-                    data=csv_buffer,
-                    file_name="operaciones_asins.csv",
-                    mime="text/csv"
-                )
+                    # 2️⃣ Verificar que Campaign ID, Ad Group ID y Ad ID sean enteros
+                    for col in ['Campaign ID', 'Ad Group ID', 'Ad ID']:
+                        if not df_csv[col].apply(lambda x: str(x).isdigit()).all():
+                            st.error(f"❌ Error: La columna '{col}' debe contener solo números enteros.")
+                            return False
+
+                    # 3️⃣ Limpiar espacios extra
+                    df_csv[columnas_amazon] = df_csv[columnas_amazon].applymap(lambda x: str(x).strip())
+
+                    return True
+
+                # =========================
+                # Exportar CSV solo si pasa validación
+                # =========================
+                if validar_para_amazon(df_csv):
+                    csv_buffer = BytesIO()
+                    df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
+                    csv_buffer.seek(0)
+
+                    st.download_button(
+                        label="⬇️ Descargar archivo de operaciones (CSV)",
+                        data=csv_buffer,
+                        file_name="operaciones_asins.csv",
+                        mime="text/csv"
+                    )
