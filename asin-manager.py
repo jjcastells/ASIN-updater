@@ -137,9 +137,10 @@ if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
     # Mostrar selector de hoja
     hojas = xls.sheet_names
-    hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=0)
-    df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
-    df.columns = [clean_text(c) for c in df.columns]
+    indice_por_defecto = 1 if len(hojas) > 1 else 0
+    hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_por_defecto)
+        df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
+        df.columns = [clean_text(c) for c in df.columns]
 
     column_map = build_column_map(df)
     required = ["entity", "campaign_name", "campaign_id", "ad_group_name", "ad_group_id", "asin"]
