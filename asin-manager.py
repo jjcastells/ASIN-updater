@@ -135,13 +135,15 @@ uploaded_file = st.file_uploader("📤 Sube tu bulk de Amazon", type=["xlsx"])
 
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
-    # Mostrar selector de hoja
     hojas = xls.sheet_names
+    
+    # Seleccionar por defecto la segunda hoja (asumiendo que es "Camp. Sponsored products")
     indice_por_defecto = 1 if len(hojas) > 1 else 0
     hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_por_defecto)
-        df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
-        df.columns = [clean_text(c) for c in df.columns]
-
+    
+    df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
+    df.columns = [clean_text(c) for c in df.columns]
+    
     column_map = build_column_map(df)
     required = ["entity", "campaign_name", "campaign_id", "ad_group_name", "ad_group_id", "asin"]
     missing = [k for k in required if k not in column_map]
@@ -150,7 +152,7 @@ if uploaded_file:
         st.write("Columnas detectadas en el archivo:", df.columns.tolist())
         st.write("Mapa de columnas generado:", column_map)
         st.stop()
-
+    
     col_entity = column_map["entity"]
     col_campaign = column_map["campaign_name"]
     col_campaign_id = column_map["campaign_id"]
