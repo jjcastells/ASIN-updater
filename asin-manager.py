@@ -92,6 +92,11 @@ COLUMN_SCHEMA = {
 }
 
 def build_column_map(df):
+    """
+    Construye un mapeo de nombres canónicos a nombres reales de columna.
+    Primero intenta coincidencia exacta después de normalizar.
+    Si no, busca que la opción normalizada sea subcadena del nombre de columna normalizado.
+    """
     def norm(x):
         return strip_accents(clean_text(x)).lower()
 
@@ -99,9 +104,22 @@ def build_column_map(df):
     col_map = {}
 
     for key, options in COLUMN_SCHEMA.items():
+        # Primero búsqueda exacta
+        found = None
+        for opt in options:
+            opt_norm = norm(opt)
+            if opt_norm in normalized:
+                found = normalized[opt_norm]
+                break
+        if found:
+            col_map[key] = found
+            continue
+
+        # Si no, búsqueda por subcadena (que la opción esté contenida en el nombre de columna)
         for col_norm, original in normalized.items():
             for opt in options:
-                if norm(opt) == col_norm:
+                opt_norm = norm(opt)
+                if opt_norm in col_norm:
                     col_map[key] = original
                     break
             if key in col_map:
@@ -117,8 +135,10 @@ uploaded_file = st.file_uploader("📤 Sube tu bulk de Amazon", type=["xlsx"])
 
 if uploaded_file:
     xls = pd.ExcelFile(uploaded_file)
-    hoja = xls.sheet_names[0]
-    df = pd.read_excel(xls, sheet_name=hoja, dtype=str)
+    # Mostrar selector de hoja
+    hojas = xls.sheet_names
+    hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=0)
+    df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
     df.columns = [clean_text(c) for c in df.columns]
 
     column_map = build_column_map(df)
@@ -126,8 +146,8 @@ if uploaded_file:
     missing = [k for k in required if k not in column_map]
     if missing:
         st.error(f"Faltan columnas esenciales: {missing}")
-        st.write("Columnas detectadas:", df.columns.tolist())
-        st.write("Column map generado:", column_map)
+        st.write("Columnas detectadas en el archivo:", df.columns.tolist())
+        st.write("Mapa de columnas generado:", column_map)
         st.stop()
 
     col_entity = column_map["entity"]
