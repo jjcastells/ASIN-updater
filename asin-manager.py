@@ -120,13 +120,32 @@ if uploaded_file:
                 st.subheader("📄 Vista previa de acciones a generar")
                 st.dataframe(df_resultado, use_container_width=True)
 
-                csv_buffer = BytesIO()
-                df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
-                csv_buffer.seek(0)
+# =========================
+# Generación del CSV para Amazon
+# =========================
+if not df_resultado.empty:
+    st.subheader("📄 Vista previa de acciones a generar")
+    st.dataframe(df_resultado, use_container_width=True)
 
-                st.download_button(
-                    label="⬇️ Descargar archivo de operaciones (CSV)",
-                    data=csv_buffer,
-                    file_name="operaciones_asins.csv",
-                    mime="text/csv"
-                )
+    # --- Solo columnas que Amazon necesita ---
+    df_csv = df_resultado.copy()
+    df_csv['Product'] = 'Sponsored Products'
+    df_csv['Entity'] = 'Product Ad'
+    df_csv['Operation'] = accion
+    df_csv['Campaign ID'] = df_csv['ID de la campaña']
+    df_csv['Ad Group ID'] = df_csv['ID del grupo de anuncios']
+    df_csv['Ad ID'] = df_csv['ID del anuncio']
+
+    columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID']
+    df_csv = df_csv[columnas_amazon]
+
+    csv_buffer = BytesIO()
+    df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
+    csv_buffer.seek(0)
+
+    st.download_button(
+        label="⬇️ Descargar archivo de operaciones (CSV)",
+        data=csv_buffer,
+        file_name="operaciones_asins.csv",
+        mime="text/csv"
+    )
