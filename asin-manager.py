@@ -3,207 +3,139 @@ import pandas as pd
 import re
 import unicodedata
 from io import BytesIO
+from typing import List
 
-st.set_page_config(page_title="ASIN Campaign Manager", layout="wide")
-st.title("📦 ASIN Campaign Manager")
+st.set_page_config(page_title="Gestor de ASINs - Campañas", page_icon="📦", layout="wide")
+st.title("📦 Gestor de ASINs en Campañas")
+st.caption("Filtra campañas y grupos, luego introduce lista de ASINs para activar/pausar/añadir. CSV final listo para descargar.")
 
-# =====================================================
-# FUNCIONES AUXILIARES
-# =====================================================
+# =====================
+# Funciones de normalización
+# =====================
+def strip_accents(s: str) -> str:
+    return "".join(
+        ch for ch in unicodedata.normalize("NFKD", str(s))
+        if not unicodedata.combining(ch)
+    )
 
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df.columns = [
-        re.sub(r"\s+", " ",
-               str(c)
-               .replace("\ufeff", "")
-               .replace("\u200b", "")
-               .replace("\xa0", " ")
-        ).strip()
-        for c in df.columns
-    ]
+    df.columns = [strip_accents(str(c)).strip() for c in df.columns]
     return df
 
-def detect_column(df, possible_names):
-    for name in possible_names:
-        if name in df.columns:
-            return name
-    return None
+def procesar_asins(df_filtrado: pd.DataFrame, campaign_col: str, adgroup_col: str, lista_asins: List[str], accion: str) -> pd.DataFrame:
+    """
+    Genera DataFrame con las operaciones según lista de ASINs y acción seleccionada.
+    """
+    filas = []
+    grupos_destino = df_filtrado[[campaign_col, adgroup_col]].drop_duplicates().values.tolist()
+    
+    for asin in lista_asins:
+        asin = asin.strip().upper()
+        for camp_id, group_id in grupos_destino:
+            filas.append({
+                'Product': 'Sponsored Products',
+                'Entity': 'Product Ad',
+                'Operation': accion,  # 'enabled' o 'paused' o 'create+enabled'
+                'Campaign Name': camp_id,
+                'Ad Group Name': group_id,
+                'ASIN': asin
+            })
+    return pd.DataFrame(filas)
 
-def parse_asins(text):
-    raw = re.split(r'[\n,; ]+', text.strip())
-    return sorted(list(set([a.upper() for a in raw if a.strip()])))
-
-# =====================================================
-# CARGA DE ARCHIVO
-# =====================================================
-
-uploaded_file = st.file_uploader("📤 Sube tu archivo bulk (Excel)", type=["xlsx"])
+# =====================
+# Interfaz de usuario
+# =====================
+uploaded_file = st.file_uploader("📤 Sube tu archivo bulk de Amazon (Excel)", type=["xlsx"])
 
 if uploaded_file:
-
-    df = pd.read_excel(uploaded_file, dtype=str)
+    xls = pd.ExcelFile(uploaded_file)
+    st.write("Hojas disponibles en el archivo:", xls.sheet_names)
+    
+    posibles = ["sponsored products", "campañas de sponsored products"]
+    hoja_detectada = next((s for s in xls.sheet_names if any(k.lower() in s.lower() for k in posibles)), None)
+    
+    hojas = xls.sheet_names
+    indice_default = hojas.index(hoja_detectada) if hoja_detectada in hojas else 0
+    hoja_seleccionada = st.selectbox("Selecciona la hoja que contiene los anuncios", hojas, index=indice_default)
+    
+    df = pd.read_excel(xls, sheet_name=hoja_seleccionada, dtype=str)
     df = clean_columns(df)
-
-    st.subheader("📋 Columnas detectadas")
-    st.write(list(df.columns))
-
-    # Detectar columnas correctamente
-    campaign_col = detect_column(df, [
-        "Nombre de la campaña (Solo informativo)",
-        "Nombre de la campaña"
-    ])
-
-    adgroup_col = detect_column(df, [
-        "Nombre del grupo de anuncios (Solo informativo)",
-        "Nombre del grupo de anuncios"
-    ])
-
-    entity_col = detect_column(df, [
-        "Entidad",
-        "Entity"
-    ])
-
-    asin_col = detect_column(df, [
-        "ASIN",
-        "Sku",
-        "SKU"
-    ])
-
-    st.write("Columnas usadas:")
-    st.write({
-        "campaign": campaign_col,
-        "ad_group": adgroup_col,
-        "entity": entity_col,
-        "asin": asin_col
-    })
-
-    if not all([campaign_col, adgroup_col, entity_col]):
-        st.error("No se detectaron correctamente las columnas necesarias.")
-        st.stop()
-
-    # =====================================================
-    # ETAPA 1 — FILTRO CAMPAÑAS Y AD GROUPS
-    # =====================================================
-
-    st.header("1️⃣ Filtrar campañas y grupos")
-
-    filtro_campania = st.text_input("🔎 Texto para filtrar campañas (opcional)")
-    filtro_grupo = st.text_input("📁 Texto para filtrar grupos (opcional)")
-
-    if st.button("📌 Aplicar filtros"):
-
-        df_ads = df[df[entity_col].str.lower().str.contains(
-            r"product\s*ad|anuncio\s*de\s*producto",
-            regex=True,
-            na=False
-        )].copy()
-
-        if filtro_campania.strip():
-            df_ads = df_ads[df_ads[campaign_col].str.contains(
-                re.escape(filtro_campania.strip()),
-                case=False,
-                na=False
-            )]
-
-        if filtro_grupo.strip():
-            df_ads = df_ads[df_ads[adgroup_col].str.contains(
-                re.escape(filtro_grupo.strip()),
-                case=False,
-                na=False
-            )]
-
+    
+    st.subheader("🔍 Vista previa del archivo (primeras 10 filas)")
+    st.dataframe(df.head(10), use_container_width=True)
+    
+    # =====================
+    # Configuración de filtros
+    # =====================
+    col1, col2 = st.columns(2)
+    with col1:
+        filtro_campania = st.text_input("🔎 Texto para filtrar campañas (opcional)", placeholder="Ej: BR")
+    with col2:
+        filtro_grupo = st.text_input("📁 Texto para filtrar grupos (opcional)", placeholder="Ej: EXACT")
+    
+    # Botón de filtrar
+    if st.button("🔎 Filtrar campañas y grupos"):
+        entity_col = "Entidad"
+        mask_entity = df[entity_col].str.lower().str.contains("anuncio de producto", na=False)
+        df_ads = df[mask_entity].copy()
+        
         if df_ads.empty:
-            st.warning("No se encontraron campañas con esos filtros.")
-            st.stop()
-
-        resumen = df_ads[[campaign_col, adgroup_col]].drop_duplicates()
-        st.success(f"Se encontraron {len(resumen)} combinaciones campaña/ad group.")
-        st.dataframe(resumen, use_container_width=True)
-
-        # Guardamos en sesión para etapa 2
-        st.session_state["df_filtrado"] = df_ads
-        st.session_state["campaign_col"] = campaign_col
-        st.session_state["adgroup_col"] = adgroup_col
-        st.session_state["asin_col"] = asin_col
-
-    # =====================================================
-    # ETAPA 2 — LISTA DE ASINS Y ACCIÓN
-    # =====================================================
-
-    if "df_filtrado" in st.session_state:
-
-        st.header("2️⃣ Introducir lista de ASINs")
-
-        asins_text = st.text_area(
-            "Pega ASINs (uno por línea, separados por coma o espacio)",
-            height=150
-        )
-
-        accion = st.selectbox(
-            "🎯 Acción a aplicar",
-            [
-                "Activar (enabled)",
-                "Pausar (paused)",
-                "Crear y activar (create+enabled)"
-            ]
-        )
-
-        if st.button("🚀 Generar vista previa"):
-
-            if not asins_text.strip():
-                st.error("Debes introducir al menos un ASIN.")
-                st.stop()
-
-            lista_asins = parse_asins(asins_text)
-
-            df_filtrado = st.session_state["df_filtrado"]
-            campaign_col = st.session_state["campaign_col"]
-            adgroup_col = st.session_state["adgroup_col"]
-            asin_col = st.session_state["asin_col"]
-
-            combinaciones = df_filtrado[[campaign_col, adgroup_col]].drop_duplicates()
-
-            filas = []
-
-            for asin in lista_asins:
-                for _, row in combinaciones.iterrows():
-
-                    operation = "update"
-                    state = "enabled"
-
-                    if "Pausar" in accion:
-                        state = "paused"
-
-                    if "Crear" in accion:
-                        operation = "create"
-
-                    filas.append({
-                        "Product": "Sponsored Products",
-                        "Entity": "Product Ad",
-                        "Operation": operation,
-                        campaign_col: row[campaign_col],
-                        adgroup_col: row[adgroup_col],
-                        "ASIN": asin,
-                        "State": state
-                    })
-
-            df_resultado = pd.DataFrame(filas)
-
-            st.subheader("📄 Vista previa de operaciones")
-            st.dataframe(df_resultado, use_container_width=True)
-
-            # =====================================================
-            # DESCARGA CSV
-            # =====================================================
-
-            buffer = BytesIO()
-            df_resultado.to_csv(buffer, index=False, sep=";", encoding="utf-8-sig")
-            buffer.seek(0)
-
-            st.download_button(
-                "⬇️ Descargar CSV para Amazon",
-                buffer,
-                file_name="bulk_operaciones_asins.csv",
-                mime="text/csv"
-            )
+            st.error("No se encontraron filas de 'Anuncio de producto'.")
+        else:
+            campaign_col = "Nombre de la campaña (Solo informativo)" if "Nombre de la campaña (Solo informativo)" in df_ads.columns else "Nombre de la campaña"
+            adgroup_col = "Nombre del grupo de anuncios (Solo informativo)" if "Nombre del grupo de anuncios (Solo informativo)" in df_ads.columns else "Nombre del grupo de anuncios"
+            
+            # Filtros opcionales
+            if filtro_campania.strip():
+                df_ads = df_ads[df_ads[campaign_col].str.contains(re.escape(filtro_campania.strip()), case=False, na=False)]
+            if filtro_grupo.strip():
+                df_ads = df_ads[df_ads[adgroup_col].str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)]
+            
+            if df_ads.empty:
+                st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
+            else:
+                st.subheader("📄 Vista previa de campañas y grupos filtrados")
+                resumen = df_ads[[campaign_col, adgroup_col]].drop_duplicates().reset_index(drop=True)
+                st.dataframe(resumen, use_container_width=True)
+                
+                # =====================
+                # Etapa 2: introducir ASINs y seleccionar acción
+                # =====================
+                st.subheader("📋 Introduce lista de ASINs")
+                asins_text = st.text_area(
+                    "Pega ASINs (uno por línea, separados por comas o espacios)",
+                    height=150,
+                    placeholder="B0DD76X9L3\nB0DD79GXQX\nB0F3JXNZ85"
+                )
+                
+                accion = st.selectbox(
+                    "🎯 Acción a aplicar a los ASIN listados",
+                    ["enabled", "paused", "create+enabled"]
+                )
+                
+                if st.button("✅ Validar ASINs y generar vista previa"):
+                    if not asins_text.strip():
+                        st.error("Debes introducir al menos un ASIN.")
+                    else:
+                        # Parseamos ASINs
+                        lista_asins = re.split(r'[\n, ]+', asins_text.strip())
+                        lista_asins = [a.upper() for a in lista_asins if a]
+                        
+                        df_resultado = procesar_asins(df_ads, campaign_col, adgroup_col, lista_asins, accion)
+                        
+                        if not df_resultado.empty:
+                            st.subheader("📄 Vista previa de acciones a generar")
+                            st.dataframe(df_resultado, use_container_width=True)
+                            
+                            # Botón de descarga CSV
+                            csv_buffer = BytesIO()
+                            df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
+                            csv_buffer.seek(0)
+                            
+                            st.download_button(
+                                label="⬇️ Descargar archivo de operaciones (CSV)",
+                                data=csv_buffer,
+                                file_name="operaciones_asins.csv",
+                                mime="text/csv"
+                            )
