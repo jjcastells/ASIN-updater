@@ -104,49 +104,60 @@ if uploaded_file:
     # =====================
     # Botón de generar CSV
     # =====================
-    if st.button("✅ Validar ASINs y generar CSV"):
-        if not st.session_state.filtrado_listo:
-            st.error("Primero debes filtrar campañas y grupos.")
-        elif not asins_text.strip():
-            st.error("Debes introducir al menos un ASIN.")
-        else:
-            df_ads_filtrado = st.session_state.df_ads_filtrado
-            lista_asins = re.split(r'[\n, ]+', asins_text.strip())
-            lista_asins = [a.upper() for a in lista_asins if a]
 
-            df_resultado = procesar_asins(df_ads_filtrado, lista_asins, accion)
+if st.button("✅ Validar ASINs y generar CSV para Bulk Changes"):
+    if not st.session_state.filtrado_listo:
+        st.error("Primero debes filtrar campañas y grupos.")
+    elif not asins_text.strip():
+        st.error("Debes introducir al menos un ASIN.")
+    else:
+        df_ads_filtrado = st.session_state.df_ads_filtrado
+        lista_asins = re.split(r'[\n, ,]+', asins_text.strip())
+        lista_asins = [a.upper() for a in lista_asins if a]
 
-            if df_resultado.empty:
-                st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
-            else:
-                # =====================
-                # Preparar CSV compatible Bulk Changes Amazon
-                # =====================
-                df_csv = pd.DataFrame()
-                df_csv['Product'] = 'Sponsored Products'
-                df_csv['Entity'] = 'Product Ad'
-                df_csv['Operation'] = 'Update/create'
-                df_csv['Campaign ID'] = df_resultado['ID de la campaña']
-                df_csv['Ad Group ID'] = df_resultado['ID del grupo de anuncios']
-                df_csv['Ad ID (Read only)'] = df_resultado['ID del anuncio']
-                df_csv['State'] = df_resultado['Operación']  # enabled/paused/create+enabled
-                df_csv['ASIN'] = df_resultado['ASIN (Solo informativo)']
-
-                # Orden exacto para Amazon
-                columnas_amazon = ['Product', 'Entity', 'Operation', 'Campaign ID', 'Ad Group ID', 'Ad ID (Read only)', 'State', 'ASIN']
-                df_csv = df_csv[columnas_amazon]
-
-                # Validación básica de vacíos
-                if df_csv[['Campaign ID', 'Ad Group ID', 'State', 'ASIN']].isnull().any().any():
-                    st.error("❌ Hay valores vacíos en columnas obligatorias. Revisa IDs y ASINs.")
+        # Construcción de filas para CSV
+        filas_csv = []
+        for _, row in df_ads_filtrado.iterrows():
+            for asin in lista_asins:
+                asin = asin.strip().upper()
+                # Determinar State según acción
+                if accion.lower() == "create+enabled":
+                    state_val = "enabled"
+                elif accion.lower() == "paused":
+                    state_val = "paused"
+                elif accion.lower() == "enabled":
+                    state_val = "enabled"
                 else:
-                    csv_buffer = BytesIO()
-                    df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
-                    csv_buffer.seek(0)
+                    state_val = accion  # fallback
 
-                    st.download_button(
-                        label="⬇️ Descargar archivo de operaciones (CSV)",
-                        data=csv_buffer,
-                        file_name="operaciones_asins.csv",
-                        mime="text/csv"
-                    )
+                fila = {
+                    "Product": "Sponsored Products",     # fijo
+                    "Entity": "Product Ad",              # fijo
+                    "Operation": "Update/Create",        # fijo
+                    "Campaign ID": row.get("ID de la campaña", ""),
+                    "Ad Group ID": row.get("ID del grupo de anuncios", ""),
+                    "Ad ID (Read only)": "",             # siempre vacío
+                    "State": state_val,
+                    "ASIN": asin
+                }
+                filas_csv.append(fila)
+
+        df_csv = pd.DataFrame(filas_csv)
+
+        # Validación rápida: no permitir filas sin Campaign/Ad Group/ASIN
+        if df_csv[['Campaign ID', 'Ad Group ID', 'ASIN']].isnull().any().any():
+            st.error("❌ Hay valores vacíos en Campaign ID, Ad Group ID o ASIN. Revisa los filtros y la lista de ASINs.")
+        else:
+            csv_buffer = BytesIO()
+            df_csv.to_csv(csv_buffer, sep=',', index=False, encoding='utf-8-sig')
+            csv_buffer.seek(0)
+
+            st.subheader("📄 Vista previa del CSV generado")
+            st.dataframe(df_csv.head(20), use_container_width=True)
+
+            st.download_button(
+                label="⬇️ Descargar CSV Bulk Changes",
+                data=csv_buffer,
+                file_name="bulk_changes_product_ads.csv",
+                mime="text/csv"
+            )
