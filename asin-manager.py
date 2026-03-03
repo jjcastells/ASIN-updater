@@ -166,42 +166,42 @@ if uploaded_file:
     # FASE 1 — FILTRO ESTRUCTURAL
     # =============================
 
-    st.header("1️⃣ Filtrar estructura")
+if st.button("🔎 Filtrar estructura"):
 
-    filtro_campania = st.text_input("Texto campaña (opcional)")
-    filtro_grupo = st.text_input("Texto grupo (opcional)")
+    df_ads = df[df[col_entity].apply(es_product_ad)].copy()
 
-    if st.button("🔎 Filtrar estructura"):
+    # Mostrar valores de campaña disponibles antes de filtrar
+    st.write("**Valores de campaña disponibles (primeros 20):**")
+    valores_campana = df_ads[col_campaign].dropna().astype(str).unique()[:20]
+    st.write(valores_campana)
 
-        df_ads = df[df[col_entity].apply(es_product_ad)].copy()
+    if filtro_campania.strip():
+        df_ads = df_ads[
+            df_ads[col_campaign]
+            .astype(str)
+            .str.contains(re.escape(filtro_campania.strip()), case=False, na=False)
+        ]
 
-        if filtro_campania.strip():
-            df_ads = df_ads[
-                df_ads[col_campaign]
-                .astype(str)
-                .str.contains(re.escape(filtro_campania.strip()), case=False, na=False)
-            ]
+    if filtro_grupo.strip():
+        df_ads = df_ads[
+            df_ads[col_group]
+            .astype(str)
+            .str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)
+        ]
 
-        if filtro_grupo.strip():
-            df_ads = df_ads[
-                df_ads[col_group]
-                .astype(str)
-                .str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)
-            ]
+    if df_ads.empty:
+        st.warning("No se encontraron coincidencias con los filtros aplicados.")
+        st.stop()
 
-        if df_ads.empty:
-            st.warning("No se encontraron coincidencias.")
-            st.stop()
+    estructura = df_ads[
+        [col_campaign, col_campaign_id, col_group, col_group_id]
+    ].drop_duplicates()
 
-        estructura = df_ads[
-            [col_campaign, col_campaign_id, col_group, col_group_id]
-        ].drop_duplicates()
+    st.session_state["estructura"] = estructura
+    st.session_state["df_filtrado"] = df_ads
 
-        st.session_state["estructura"] = estructura
-        st.session_state["df_filtrado"] = df_ads
-
-        st.success("Filtro aplicado correctamente.")
-        st.dataframe(estructura, use_container_width=True)
+    st.success("Filtro aplicado correctamente.")
+    st.dataframe(estructura, use_container_width=True)
 
     # =============================
     # FASE 2 — VALIDAR FILTRO
