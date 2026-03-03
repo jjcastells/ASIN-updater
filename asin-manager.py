@@ -134,45 +134,45 @@ if uploaded_file:
 resumen = resumen.drop_duplicates().reset_index(drop=True)
 st.dataframe(resumen, use_container_width=True)
                         
-                        # =====================
-                        # Etapa 2: introducir ASINs y seleccionar acción
-                        # =====================
-                        st.subheader("📋 Introduce lista de ASINs")
-                        asins_text = st.text_area(
-                            "Pega ASINs (uno por línea, separados por comas o espacios)",
-                            height=150,
-                            placeholder="B0DD76X9L3\nB0DD79GXQX\nB0F3JXNZ85"
-                        )
-                        
-                        accion = st.selectbox(
-                            "🎯 Acción a aplicar a los ASIN listados",
-                            ["enabled", "paused", "create+enabled"]
-                        )
-                        
-                        if st.button("✅ Validar ASINs y generar vista previa"):
-                            if not asins_text.strip():
-                                st.error("Debes introducir al menos un ASIN.")
-                            else:
-                                # Parseamos ASINs
-                                lista_asins = re.split(r'[\n, ]+', asins_text.strip())
-                                lista_asins = [a.upper() for a in lista_asins if a]
-                                
-                                df_resultado = procesar_asins(df_ads, campaign_col, adgroup_col, lista_asins, accion)
-                                
-                                if df_resultado.empty:
-                                    st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
-                                else:
-                                    st.subheader("📄 Vista previa de acciones a generar")
-                                    st.dataframe(df_resultado, use_container_width=True)
-                                    
-                                    # Botón de descarga CSV
-                                    csv_buffer = BytesIO()
-                                    df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
-                                    csv_buffer.seek(0)
-                                    
-                                    st.download_button(
-                                        label="⬇️ Descargar archivo de operaciones (CSV)",
-                                        data=csv_buffer,
-                                        file_name="operaciones_asins.csv",
-                                        mime="text/csv"
-                                    )
+# =====================
+# Etapa 2: introducir ASINs y seleccionar acción
+# =====================
+st.subheader("📋 Introduce lista de ASINs")
+asins_text = st.text_area(
+    "Pega ASINs (uno por línea, separados por comas o espacios)",
+    height=150,
+    placeholder="B0DD76X9L3\nB0DD79GXQX\nB0F3JXNZ85"
+)
+
+accion = st.selectbox(
+    "🎯 Acción a aplicar a los ASIN listados",
+    ["enabled", "paused", "create+enabled"]
+)
+
+if st.button("✅ Validar ASINs y generar vista previa"):
+    if not asins_text.strip():
+        st.error("Debes introducir al menos un ASIN.")
+    else:
+        # Parseamos ASINs
+        lista_asins = re.split(r'[\n, ]+', asins_text.strip())
+        lista_asins = [a.upper() for a in lista_asins if a]
+
+        df_resultado = procesar_asins(df_ads, campaign_col, adgroup_col, lista_asins, accion)
+
+        if df_resultado.empty:
+            st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
+        else:
+            st.subheader("📄 Vista previa de acciones a generar")
+            st.dataframe(df_resultado, use_container_width=True)
+
+            # Botón de descarga CSV
+            csv_buffer = BytesIO()
+            df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
+            csv_buffer.seek(0)
+
+            st.download_button(
+                label="⬇️ Descargar archivo de operaciones (CSV)",
+                data=csv_buffer,
+                file_name="operaciones_asins.csv",
+                mime="text/csv"
+            )
