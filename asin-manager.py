@@ -38,7 +38,7 @@ if uploaded_file:
     st.dataframe(df.head(10), use_container_width=True)
 
     # =====================
-    # Filtros
+    # Filtros de campaña y ad group
     # =====================
     col1, col2 = st.columns(2)
     with col1:
@@ -47,71 +47,62 @@ if uploaded_file:
         filtro_grupo = st.text_input("📁 Filtrar grupos (opcional)", placeholder="Ej: EXACT")
 
     if st.button("🔎 Filtrar campañas y grupos"):
-        entity_col = "Entidad"
-        if entity_col not in df.columns:
-            st.error(f"No se encontró la columna '{entity_col}' en el archivo.")
+        # No filtramos por 'Entidad', solo por campaña y ad group
+        df_ads = df.copy()
+
+        if filtro_campania.strip():
+            df_ads = df_ads[df_ads["Nombre de la campaña (Solo informativo)"].str.contains(re.escape(filtro_campania.strip()), case=False, na=False)]
+        if filtro_grupo.strip():
+            df_ads = df_ads[df_ads["Nombre del grupo de anuncios (Solo informativo)"].str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)]
+
+        if df_ads.empty:
+            st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
         else:
-            # Solo anuncios de producto
-            mask_entity = df[entity_col].str.lower().str.contains("anuncio de producto", na=False)
-            df_ads = df[mask_entity].copy()
+            # Vista previa de campañas y grupos filtrados
+            st.subheader("📄 Vista previa de campañas y grupos filtrados")
+            resumen = df_ads[[
+                "Nombre de la campaña (Solo informativo)", 
+                "Nombre del grupo de anuncios (Solo informativo)"
+            ]].drop_duplicates().reset_index(drop=True)
+            st.dataframe(resumen, use_container_width=True)
 
-            if df_ads.empty:
-                st.error("No se encontraron filas de 'Anuncio de producto'.")
-            else:
-                # Aplicar filtros opcionales
-                if filtro_campania.strip():
-                    df_ads = df_ads[df_ads["Nombre de la campaña (Solo informativo)"].str.contains(re.escape(filtro_campania.strip()), case=False, na=False)]
-                if filtro_grupo.strip():
-                    df_ads = df_ads[df_ads["Nombre del grupo de anuncios (Solo informativo)"].str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)]
+            # =====================
+            # Introducir ASINs y seleccionar acción
+            # =====================
+            st.subheader("📋 Introduce lista de ASINs")
+            asins_text = st.text_area(
+                "Pega ASINs (uno por línea, separados por comas o espacios)",
+                height=150,
+                placeholder="B0DD76X9L3\nB0DD79GXQX\nB0F3JXNZ85"
+            )
 
-                if df_ads.empty:
-                    st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
+            accion = st.selectbox(
+                "🎯 Acción a aplicar a los ASIN listados",
+                ["enabled", "paused", "create+enabled"]
+            )
+
+            if st.button("✅ Validar ASINs y generar vista previa"):
+                if not asins_text.strip():
+                    st.error("Debes introducir al menos un ASIN.")
                 else:
-                    # Vista previa de campañas y grupos filtrados
-                    st.subheader("📄 Vista previa de campañas y grupos filtrados")
-                    resumen = df_ads[["Nombre de la campaña (Solo informativo)", 
-                                      "Nombre del grupo de anuncios (Solo informativo)", 
-                                      "SKU", 
-                                      "ASIN (Solo informativo)"]].drop_duplicates().reset_index(drop=True)
-                    st.dataframe(resumen, use_container_width=True)
+                    lista_asins = re.split(r'[\n, ]+', asins_text.strip())
+                    lista_asins = [a.upper() for a in lista_asins if a]
 
-                    # =====================
-                    # Introducir ASINs y seleccionar acción
-                    # =====================
-                    st.subheader("📋 Introduce lista de ASINs")
-                    asins_text = st.text_area(
-                        "Pega ASINs (uno por línea, separados por comas o espacios)",
-                        height=150,
-                        placeholder="B0DD76X9L3\nB0DD79GXQX\nB0F3JXNZ85"
-                    )
+                    df_resultado = procesar_asins(df_ads, lista_asins, accion)
 
-                    accion = st.selectbox(
-                        "🎯 Acción a aplicar a los ASIN listados",
-                        ["enabled", "paused", "create+enabled"]
-                    )
+                    if df_resultado.empty:
+                        st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
+                    else:
+                        st.subheader("📄 Vista previa de acciones a generar")
+                        st.dataframe(df_resultado, use_container_width=True)
 
-                    if st.button("✅ Validar ASINs y generar vista previa"):
-                        if not asins_text.strip():
-                            st.error("Debes introducir al menos un ASIN.")
-                        else:
-                            lista_asins = re.split(r'[\n, ]+', asins_text.strip())
-                            lista_asins = [a.upper() for a in lista_asins if a]
+                        csv_buffer = BytesIO()
+                        df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
+                        csv_buffer.seek(0)
 
-                            df_resultado = procesar_asins(df_ads, lista_asins, accion)
-
-                            if df_resultado.empty:
-                                st.warning("No se pudieron generar acciones. Revisa las columnas y los filtros.")
-                            else:
-                                st.subheader("📄 Vista previa de acciones a generar")
-                                st.dataframe(df_resultado, use_container_width=True)
-
-                                csv_buffer = BytesIO()
-                                df_resultado.to_csv(csv_buffer, sep=';', index=False, encoding='utf-8-sig')
-                                csv_buffer.seek(0)
-
-                                st.download_button(
-                                    label="⬇️ Descargar archivo de operaciones (CSV)",
-                                    data=csv_buffer,
-                                    file_name="operaciones_asins.csv",
-                                    mime="text/csv"
-                                )
+                        st.download_button(
+                            label="⬇️ Descargar archivo de operaciones (CSV)",
+                            data=csv_buffer,
+                            file_name="operaciones_asins.csv",
+                            mime="text/csv"
+                        )
