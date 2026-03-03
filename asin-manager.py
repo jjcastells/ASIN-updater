@@ -74,66 +74,66 @@ if uploaded_file:
     st.subheader("🔍 Vista previa del archivo (primeras 10 filas)")
     st.dataframe(df.head(10), use_container_width=True)
     
-    # =====================
-    # Configuración de filtros
-    # =====================
-    col1, col2 = st.columns(2)
-    with col1:
-        filtro_campania = st.text_input("🔎 Texto para filtrar campañas (opcional)", placeholder="Ej: BR")
-    with col2:
-        filtro_grupo = st.text_input("📁 Texto para filtrar grupos (opcional)", placeholder="Ej: EXACT")
-    
-    # Botón de filtrar
-    if st.button("🔎 Filtrar campañas y grupos"):
-        entity_col = "Entidad"
-        if entity_col not in df.columns:
-            st.error(f"No se encontró la columna '{entity_col}' en el archivo.")
-        else:
-            mask_entity = df[entity_col].str.lower().str.contains("anuncio de producto", na=False)
-            df_ads = df[mask_entity].copy()
-            
-            if df_ads.empty:
-                st.error("No se encontraron filas de 'Anuncio de producto'.")
-            else:
-                # Detectar columnas seguras
-                posibles_campaign = ["Nombre de la campaña (Solo informativo)", "Nombre de la campaña"]
-                posibles_adgroup = ["Nombre del grupo de anuncios (Solo informativo)", "Nombre del grupo de anuncios"]
-                
-                campaign_col = next((c for c in posibles_campaign if c in df_ads.columns), None)
-                adgroup_col = next((c for c in posibles_adgroup if c in df_ads.columns), None)
-                
-                if not campaign_col and not adgroup_col:
-                    st.error("No se encontraron columnas de campaña ni grupo en el archivo.")
-                else:
-                    # Filtros opcionales
-                    if filtro_campania.strip() and campaign_col:
-                        df_ads = df_ads[df_ads[campaign_col].str.contains(re.escape(filtro_campania.strip()), case=False, na=False)]
-                    if filtro_grupo.strip() and adgroup_col:
-                        df_ads = df_ads[df_ads[adgroup_col].str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)]
-                    
-                    if df_ads.empty:
-                        st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
-                    else:
-                        st.subheader("📄 Vista previa de campañas y grupos filtrados")
-                        
-                        # Forzar las columnas en el orden deseado
-                        columnas_deseadas = [
-                            "Nombre de la campaña (Solo informativo)",
-                            "Nombre del grupo de anuncios (Solo informativo)"
-                        ]
-                        
-                        # Crear DataFrame seguro rellenando columnas ausentes con cadena vacía
-                        resumen = pd.DataFrame()
-                        for col in columnas_deseadas:
-                            if col in df_ads.columns:
-                                resumen[col] = df_ads[col]
-                            else:
-                                resumen[col] = ""  # Si no existe la columna, poner vacío
+# =====================
+# Configuración de filtros
+# =====================
+col1, col2 = st.columns(2)
+with col1:
+    filtro_campania = st.text_input("🔎 Texto para filtrar campañas (opcional)", placeholder="Ej: BR")
+with col2:
+    filtro_grupo = st.text_input("📁 Texto para filtrar grupos (opcional)", placeholder="Ej: EXACT")
 
-# Eliminar duplicados y resetear índice
-resumen = resumen.drop_duplicates().reset_index(drop=True)
-st.dataframe(resumen, use_container_width=True)
-                        
+# Botón de filtrar
+if st.button("🔎 Filtrar campañas y grupos"):
+    entity_col = "Entidad"
+    if entity_col not in df.columns:
+        st.error(f"No se encontró la columna '{entity_col}' en el archivo.")
+    else:
+        mask_entity = df[entity_col].str.lower().str.contains("anuncio de producto", na=False)
+        df_ads = df[mask_entity].copy()
+
+        if df_ads.empty:
+            st.error("No se encontraron filas de 'Anuncio de producto'.")
+        else:
+            # Detectar columnas seguras
+            posibles_campaign = ["Nombre de la campaña (Solo informativo)", "Nombre de la campaña"]
+            posibles_adgroup = ["Nombre del grupo de anuncios (Solo informativo)", "Nombre del grupo de anuncios"]
+
+            campaign_col = next((c for c in posibles_campaign if c in df_ads.columns), None)
+            adgroup_col = next((c for c in posibles_adgroup if c in df_ads.columns), None)
+
+            if not campaign_col and not adgroup_col:
+                st.error("No se encontraron columnas de campaña ni grupo en el archivo.")
+            else:
+                # Filtros opcionales
+                if filtro_campania.strip() and campaign_col:
+                    df_ads = df_ads[df_ads[campaign_col].str.contains(re.escape(filtro_campania.strip()), case=False, na=False)]
+                if filtro_grupo.strip() and adgroup_col:
+                    df_ads = df_ads[df_ads[adgroup_col].str.contains(re.escape(filtro_grupo.strip()), case=False, na=False)]
+
+                if df_ads.empty:
+                    st.warning("No se encontraron campañas o grupos que coincidan con los filtros.")
+                else:
+                    st.subheader("📄 Vista previa de campañas y grupos filtrados")
+
+                    # Forzar las columnas en el orden deseado
+                    columnas_deseadas = [
+                        "Nombre de la campaña (Solo informativo)",
+                        "Nombre del grupo de anuncios (Solo informativo)"
+                    ]
+
+                    # Crear DataFrame seguro rellenando columnas ausentes con cadena vacía
+                    resumen = pd.DataFrame()
+                    for col in columnas_deseadas:
+                        if col in df_ads.columns:
+                            resumen[col] = df_ads[col]
+                        else:
+                            resumen[col] = ""  # Si no existe la columna, poner vacío
+
+                    # Eliminar duplicados y resetear índice
+                    resumen = resumen.drop_duplicates().reset_index(drop=True)
+                    st.dataframe(resumen, use_container_width=True)
+                    
 # =====================
 # Etapa 2: introducir ASINs y seleccionar acción
 # =====================
